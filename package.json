@@ -1,6 +1,6 @@
 {
   "name": "mo-oauth-cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "main": "dist/index.js",
   "repository": "git@github.com:mo22/mo-oauth-cli.git",
   "author": "Moritz Moeller <mm@mxs.de>",

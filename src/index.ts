@@ -175,7 +175,6 @@ export async function getToken(config: Config, args: { scope?: string | string[]
   } else {
     code = await readCodeViaHttp(config);
   }
-  console.log('code', code);
   const token = await getTokenFromCode(config, code);
   return token;
 }
