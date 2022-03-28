@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2018",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "lib": [
+      "es2017",
+      "es6"
+    ],
+  },
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "types/**/*"
+  ],
+  "compileOnSave": true
+}

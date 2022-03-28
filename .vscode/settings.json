@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": true,
+  "editor.acceptSuggestionOnEnter": "smart",
+  "editor.quickSuggestions": true,
+  "javascript.preferences.quoteStyle": "single",
+  "typescript.preferences.quoteStyle": "single",
+  "typescript.format.enable": true,
+  "typescript.suggest.paths": true,
+  "typescript.format.semicolons": "insert",
+  "typescript.implementationsCodeLens.enabled": true,
+  "editor.comments.ignoreEmptyLines": true,
+  "editor.autoClosingQuotes": "always",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.tslint": true
+  },
+  "emmet.showExpandedAbbreviation": "never"
+}
