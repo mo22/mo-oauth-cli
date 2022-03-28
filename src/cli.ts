@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import yargs from 'yargs';
 import * as oauthcli from './index';
 import * as fs from 'fs';

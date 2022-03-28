@@ -1,11 +1,11 @@
 {
   "name": "mo-oauth-cli",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "main": "dist/index.js",
   "repository": "git@github.com:mo22/mo-oauth-cli.git",
   "author": "Moritz Moeller <mm@mxs.de>",
   "bin": {
-    "mo-oauth-cli": "./dist/cli.js"
+    "mo-oauth-cli": "./bin/cli.js"
   },
   "license": "MIT",
   "devDependencies": {
