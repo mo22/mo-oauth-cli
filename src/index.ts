@@ -2,10 +2,10 @@ import { fetch } from 'cross-fetch';
 import * as fs from 'fs';
 import * as http from 'http';
 import { URL, URLSearchParams } from 'url';
-import yargs from 'yargs';
 import open from 'open';
-import { IsString, IsUrl, validateOrReject } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, IsUrl, validateOrReject } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import * as readline from 'readline';
 
 // parsed oauth configuration
 export class Config {
@@ -13,18 +13,49 @@ export class Config {
   client_id!: string;
   @IsString()
   client_secret!: string;
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   auth_url!: string;
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   token_url!: string;
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   redirect_url!: string;
+  @IsString({ each: true }) @IsArray() @IsOptional()
+  scope?: string[];
+}
+
+// oauth token
+export class Token {
+  @IsString()
+  access_token!: string;
+  @IsString()
+  client_id!: string;
+  @IsInt() @IsOptional()
+  expires_in?: number;
+  @IsInt() @IsOptional()
+  expires_at?: number;
+  @IsString() @IsOptional()
+  scope?: string;
+  @IsString() @IsEnum(['Bearer'])
+  token_type!: 'Bearer';
+  // @TODO: refresh_token handling?
 }
 
 // parse json config into Config, interpreting a range of formats
 export async function parseJsonConfig(json: any): Promise<Config> {
   if (json.client_id && json.client_secret) {
-    const config = plainToInstance(Config, json);
+    const config = plainToInstance(Config, {
+      ...json,
+    });
+    await validateOrReject(config);
+    return config;
+  } else if (json?.web?.client_id) {
+    // google style
+    const config = plainToInstance(Config, {
+      ...json.web,
+      redirect_url: json.web.redirect_uris[0],
+      auth_url: json.web.auth_uri,
+      token_url: json.web.token_uri,
+    });
     await validateOrReject(config);
     return config;
   } else {
@@ -38,13 +69,15 @@ export async function loadJsonConfig(path: string): Promise<Config> {
 }
 
 export function getCodeAuthUrl(config: Config, args?: { scope?: string | string[]; redirect_uri?: string; }): string {
+  let scope = config.scope ? config.scope.join(' ') : undefined;
+  if (scope === undefined && args.scope !== undefined) {
+    scope = Array.isArray(args.scope) ? args.scope.join(' ') : args.scope;
+  }
   const url = new URL(config.auth_url);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('redirect_uri', args?.redirect_uri ?? config.redirect_url);
-  if (args?.scope !== undefined) {
-    // @TODO: , or space?
-    url.searchParams.set('scope', Array.isArray(args.scope) ? args.scope.join(' ') : args.scope);
-  }
+  if (scope !== undefined) url.searchParams.set('scope', scope);
+  url.searchParams.set('state', 'mo-oauth-cli:' + config.client_id);
   url.searchParams.set('client_id', config.client_id);
   return url.toString();
 }
@@ -53,16 +86,27 @@ export async function openBrowser(url: string) {
   await open(url);
 }
 
-export async function readCodeFromConsole() {
-  // readline etc.
+export async function readCodeFromConsole(args?: { prompt?: string; }) {
+  return new Promise<string>((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(args?.prompt ?? 'oauth code: ', (answer) => {
+      resolve(answer);
+      rl.close();
+    });
+  });
 }
 
-export function readCodeViaHttp(args?: { port?: number; timeout?: number; }) {
+export function readCodeViaHttp(config: Config, args?: { port?: number; timeout?: number; }) {
   return new Promise<string>((resolve, reject) => {
+    const port = args?.port ?? new URL(config.redirect_url).port ?? 8000;
     let timeoutHandle: ReturnType<typeof setTimeout>;
     const handler: http.RequestListener = (req, res) => {
       const url = new URL(`http://localhost${req.url}`);
       if (url.searchParams.get('code')) {
+        // verify state?
         resolve(url.searchParams.get('code')!);
         res.writeHead(200);
         res.write('<!DOCTYPE html><html><body><h1>you can now close this</h1><script>window.close();</script></body></html>');
@@ -74,7 +118,7 @@ export function readCodeViaHttp(args?: { port?: number; timeout?: number; }) {
       res.writeHead(404).end();
     };
     const server = http.createServer(handler);
-    server.listen(args?.port ?? 8080);
+    server.listen(port);
     const timeout = args?.timeout ?? (60 * 1000);
     timeoutHandle = setTimeout(() => {
       server.close();
@@ -83,88 +127,55 @@ export function readCodeViaHttp(args?: { port?: number; timeout?: number; }) {
   });
 }
 
-
-
-(async () => {
-  const args = await yargs
-    .option('json', { type: 'string' })
-    .option('client-id', { type: 'string' })
-    .option('client-secret', { type: 'string' })
-    .option('auth-uri', { type: 'string', default: 'https://accounts.google.com/o/oauth2/auth' })
-    .option('token-uri', { type: 'string', default: 'https://oauth2.googleapis.com/token' })
-    .option('redirect-uri', { type: 'string', default: 'http://localhost:8000/' })
-    .option('scope', { array: true, type: 'string' })
-    .option('write-to', { type: 'string' })
-    .argv;
-
-  if (args.json) {
-    const buf = await fs.promises.readFile(args.json);
-    const json = JSON.parse(buf.toString());
-    args.clientId = json.web.client_id;
-    args.clientSecret = json.web.client_secret;
-    args.authUri = json.web.auth_uri;
-    args.tokenUri = json.web.token_uri;
-    args.redirectUri = json.web.redirect_uris?.[0];
-  }
-
-  await open('http://sindresorhus.com'); // Opens the url in the default browser
-
-  const codePromise = new Promise<string>((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      const url = new URL(`http://localhost${req.url}`);
-      if (url.searchParams.get('code')) {
-        resolve(url.searchParams.get('code')!);
-        res.writeHead(200);
-        res.write('<!DOCTYPE html><html><body><h1>you can now close this</h1><script>window.close();</script></body></html>');
-        res.end();
-        server.close();
-        return;
-      }
-      res.writeHead(404).end();
-    });
-    server.listen(new URL(args.redirectUri).port);
-    setTimeout(() => {
-      server.close();
-      reject(new Error(`timeout`));
-    }, 1000 * 30).unref();
-  });
-
-  const authUri = args.authUri + '?' + new URLSearchParams({
-    response_type: 'code',
-    redirect_uri: args.redirectUri,
-    scope: args.scope?.join(',') ?? '',
-    client_id: args.clientId ?? '',
-  }).toString();
-  console.log(authUri);
-  // open(authUri);
-  // @TODO: auto open?
-
-  const code = await codePromise;
-  const res = await fetch(args.tokenUri, {
+export async function getTokenFromCode(config: Config, code: string): Promise<Token> {
+  const res = await fetch(config.token_url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
       code: code,
-      client_id: args.clientId!,
-      client_secret: args.clientSecret!,
-      redirect_uri: args.redirectUri,
+      client_id: config.client_id,
+      client_secret: config.client_secret,
+      redirect_uri: config.redirect_url,
       grant_type: 'authorization_code',
     }).toString(),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const json = await res.json();
-
-  if (args.writeTo) {
-    await fs.promises.writeFile(args.writeTo, JSON.stringify(json));
-  } else {
-    console.log(JSON.stringify(json, null, 2));
+  if (!res.ok) {
+    let json: any;
+    try {
+      json = await res.json();
+    } catch (err: any) {
+    }
+    throw new Error(`getTokenFromCode: ${res.status} ${res.statusText}: ${json?.error} ${json?.error_description}`);
   }
+  const json = await res.json();
+  const token = plainToInstance(Token, {
+    client_id: config.client_id,
+    ...json,
+    ...(json.expires_in && !json.expires_at) && { expires_at: Date.now() + json.expires_in * 1000 },
+  });
+  await validateOrReject(token);
+  return token;
+}
 
-  // npx ts-node test/google-auth-cli.ts --json ~/Downloads/client_secret_300730837845-07tbg3dim9vagporh3b39argcf29lnjd.apps.googleusercontent.com.json --scope https://www.googleapis.com/auth/spreadsheets.readonly --write-to .env.google-creds.json
-
-})().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export async function getToken(config: Config, args: { scope?: string | string[]; openBrowser?: boolean; readCodeFromConsole?: boolean; }) {
+  await validateOrReject(config);
+  const authUrl = getCodeAuthUrl(config, {
+    scope: args.scope,
+  });
+  if (args?.openBrowser === false) {
+    console.log('open browser:', authUrl);
+  } else {
+    await openBrowser(authUrl);
+  }
+  let code: string;
+  if (args?.readCodeFromConsole === true) {
+    code = await readCodeFromConsole();
+  } else {
+    code = await readCodeViaHttp(config);
+  }
+  console.log('code', code);
+  const token = await getTokenFromCode(config, code);
+  return token;
+}
