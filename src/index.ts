@@ -83,9 +83,7 @@ export function getCodeAuthUrl(config: Config, args?: { scope?: string | string[
 }
 
 export async function openBrowser(url: string) {
-  const res = await open(url);
-  console.log('res', res);
-  return (res.exitCode == 0);
+  await open(url);
 }
 
 export async function readCodeFromConsole(args?: { prompt?: string; }) {
@@ -188,8 +186,10 @@ export async function getToken(config: Config, args?: {
   });
   let opened = false;
   if (args?.openBrowser !== false) {
-    if (await openBrowser(authUrl)) {
+    try {
+      await openBrowser(authUrl);
       opened = true;
+    } catch (err) {
     }
   }
   if (!opened) {
