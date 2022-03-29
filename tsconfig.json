@@ -11,10 +11,11 @@
     "emitDecoratorMetadata": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "declaration": true,
     "lib": [
       "es2017",
       "es6"
-    ],
+    ]
   },
   "include": [
     "src/**/*",
