@@ -159,7 +159,7 @@ export async function getTokenFromCode(config: Config, code: string): Promise<To
   return token;
 }
 
-export async function getToken(config: Config, args: { scope?: string | string[]; openBrowser?: boolean; readCodeFromConsole?: boolean; }) {
+export async function getToken(config: Config, args?: { scope?: string | string[]; openBrowser?: boolean; readCodeFromConsole?: boolean; }) {
   await validateOrReject(config);
   const authUrl = getCodeAuthUrl(config, {
     scope: args.scope,
