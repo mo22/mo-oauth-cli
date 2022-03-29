@@ -1,7 +1,5 @@
-#!/usr/bin/env node
 import yargs from 'yargs';
 import * as oauthcli from './index';
-import * as fs from 'fs';
 
 (async () => {
   const args = await yargs
@@ -16,11 +14,10 @@ import * as fs from 'fs';
   const token = await oauthcli.getToken(config, {
     scope: args.scope,
     openBrowser: args.openBrowser,
-    readCodeFromConsole: args.readCodeFromConsole,
+    readCode: args.readCodeFromConsole ? 'console' : 'webserver',
+    cachePath: args.writeToken,
   });
-  if (args.writeToken) {
-    await fs.promises.writeFile(args.writeToken, JSON.stringify(token));
-  } else {
+  if (!args.writeToken) {
     console.log(token);
   }
 

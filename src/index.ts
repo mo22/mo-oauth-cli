@@ -4,7 +4,7 @@ import * as http from 'http';
 import { URL, URLSearchParams } from 'url';
 import open from 'open';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, IsUrl, validateOrReject } from 'class-validator';
-import { plainToInstance } from 'class-transformer';
+import { instanceToPlain, plainToInstance } from 'class-transformer';
 import * as readline from 'readline';
 
 // parsed oauth configuration
@@ -83,7 +83,9 @@ export function getCodeAuthUrl(config: Config, args?: { scope?: string | string[
 }
 
 export async function openBrowser(url: string) {
-  await open(url);
+  const res = await open(url);
+  console.log('res', res);
+  return (res.exitCode == 0);
 }
 
 export async function readCodeFromConsole(args?: { prompt?: string; }) {
@@ -159,22 +161,51 @@ export async function getTokenFromCode(config: Config, code: string): Promise<To
   return token;
 }
 
-export async function getToken(config: Config, args?: { scope?: string | string[]; openBrowser?: boolean; readCodeFromConsole?: boolean; }) {
+export async function getToken(config: Config, args?: {
+  scope?: string | string[];
+  openBrowser?: boolean; // automatically open browser instead of just printing the URL
+  readCode?: 'console' | 'webserver' | ((config: Config) => Promise<string>);
+  token?: Token; // reuse this token
+  cachePath?: string;
+}) {
+  if (args?.cachePath && !args.token) {
+    try {
+      const buf = await fs.promises.readFile(args.cachePath);
+      args.token = plainToInstance(Token, JSON.parse(buf.toString()));
+      await validateOrReject(args.token);
+    } catch (err) {
+    }
+  }
+  if (args?.token && args?.token.expires_at && args?.token.expires_at < Date.now()) {
+    args.token = undefined;
+  }
+  if (args?.token) {
+    return args?.token;
+  }
   await validateOrReject(config);
   const authUrl = getCodeAuthUrl(config, {
-    scope: args.scope,
+    scope: args?.scope,
   });
-  if (args?.openBrowser === false) {
-    console.log('open browser:', authUrl);
-  } else {
-    await openBrowser(authUrl);
+  let opened = false;
+  if (args?.openBrowser !== false) {
+    if (await openBrowser(authUrl)) {
+      opened = true;
+    }
+  }
+  if (!opened) {
+    console.log(`login: ${authUrl}`);
   }
   let code: string;
-  if (args?.readCodeFromConsole === true) {
+  if (args?.readCode instanceof Function) {
+    code = await args.readCode(config);
+  } else if (args?.readCode === 'console') {
     code = await readCodeFromConsole();
   } else {
     code = await readCodeViaHttp(config);
   }
   const token = await getTokenFromCode(config, code);
+  if (args?.cachePath) {
+    await fs.promises.writeFile(args.cachePath, JSON.stringify(instanceToPlain(token)));
+  }
   return token;
 }
